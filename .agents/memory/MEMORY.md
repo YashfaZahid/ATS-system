@@ -1,0 +1,1 @@
+- [ATS stack decisions](ats-stack.md) — Firebase Auth + Supabase DB/Storage + Gemini AI; sub-path exports of workspace packages break Vite; always export from main index.

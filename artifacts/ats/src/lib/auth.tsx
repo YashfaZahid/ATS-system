@@ -9,9 +9,7 @@ import {
   updateProfile
 } from 'firebase/auth';
 import { auth } from './firebase';
-import { UserProfile, UserProfileRole } from '@workspace/api-client-react/api.schemas';
-import { getMe, syncUser } from '@workspace/api-client-react';
-import { setAuthTokenGetter } from '@workspace/api-client-react/custom-fetch';
+import { UserProfile, UserProfileRole, getMe, syncUser, setAuthTokenGetter } from '@workspace/api-client-react';
 import { useLocation } from 'wouter';
 
 interface AuthContextType {

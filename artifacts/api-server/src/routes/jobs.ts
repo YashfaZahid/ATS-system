@@ -162,7 +162,7 @@ router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
     res.status(404).json({ error: "Job not found" });
     return;
   }
-  await logActivity(req.user!.id, req.user!.name, "deleted_job", "job", req.params["id"]!, {});
+  await logActivity(req.user!.id, req.user!.name, "deleted_job", "job", String(req.params["id"]), {});
   res.status(204).send();
 });
 

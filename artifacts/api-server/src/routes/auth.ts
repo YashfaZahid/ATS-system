@@ -2,7 +2,6 @@ import { Router } from "express";
 import { supabase } from "../lib/supabase.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { verifyFirebaseToken } from "../lib/firebase.js";
-import admin from "firebase-admin";
 import { getFirebaseAdmin } from "../lib/firebase.js";
 
 const router = Router();

@@ -140,7 +140,8 @@ router.post("/users", requireAuth, requireAdmin, async (req, res) => {
   // Create in Firebase
   let fbUser;
   try {
-    fbUser = await getFirebaseAdmin().auth().createUser({ email, password, displayName: name });
+    const { getAuth } = await import("firebase-admin/auth");
+    fbUser = await getAuth().createUser({ email, password, displayName: name });
   } catch (err: unknown) {
     const error = err as Error & { code?: string };
     res.status(400).json({ error: error.message ?? "Failed to create Firebase user" });
@@ -155,7 +156,8 @@ router.post("/users", requireAuth, requireAdmin, async (req, res) => {
 
   if (error || !user) {
     // Rollback Firebase user
-    await getFirebaseAdmin().auth().deleteUser(fbUser.uid).catch(() => {});
+    const { getAuth: getAuth2 } = await import("firebase-admin/auth");
+    await getAuth2().deleteUser(fbUser.uid).catch(() => {});
     res.status(500).json({ error: "Failed to create admin user" });
     return;
   }

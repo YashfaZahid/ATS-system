@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import { setAuthTokenGetter } from '@workspace/api-client-react/custom-fetch';
+import { setAuthTokenGetter } from '@workspace/api-client-react';
 import { auth } from './firebase';
 
 export const queryClient = new QueryClient({
