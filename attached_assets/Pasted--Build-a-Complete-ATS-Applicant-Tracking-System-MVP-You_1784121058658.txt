@@ -1,0 +1,187 @@
+# Build a Complete ATS (Applicant Tracking System) MVP
+
+You are a senior full-stack software engineer and architect. Build a **clean, lightweight, fully functional Applicant Tracking System (ATS)** that can realistically be used by a small or medium-sized company. This is an MVP, so focus on implementing every required feature correctly without overengineering. **Do not skip any requested functionality**, but also **do not add unnecessary features, animations, abstractions, files, or dependencies**. Keep the codebase compact, modular, readable, and easy to continue developing.
+
+## Tech Stack
+
+* **Frontend:** React + Vite + TypeScript + Tailwind CSS
+* **Backend:** Node.js + Express + TypeScript
+* **Authentication:** Firebase Authentication
+* **Database:** Supabase PostgreSQL
+* **File Storage:** Supabase Storage (for resumes)
+* **AI:** Gemini API
+* **Automation:** n8n
+
+## Important Requirements
+
+* Do **NOT** use any Replit-specific database, authentication, storage, containers, or services.
+* Do **NOT** use JSON files, SQLite, or any local database.
+* The application must work after cloning by simply creating `.env` files and running `npm install`.
+* I already have Firebase and Supabase projects; do not create them. Use placeholder environment variables and generate `.env.example` files with clear comments.
+* Use the **Supabase Service Role Key** on the backend (`SUPABASE_SERVICE_ROLE_KEY`) for all database operations. Never expose it to the frontend. The frontend should communicate with the backend through REST APIs.
+
+## Authentication & Roles
+
+Use Firebase Authentication.
+
+### Candidate
+
+* Can sign up, log in, reset password, and log out.
+* Can edit profile.
+* Upload/update resume.
+* Browse and search jobs.
+* Apply for jobs.
+* Track application status.
+* View interview schedule.
+* View notifications.
+* Withdraw applications.
+* View their AI resume analysis (limited information).
+
+### Admin
+
+* Cannot sign up publicly.
+* Can only be created by another Admin from the Admin Dashboard.
+* Can manage jobs, candidates, interviews, applications, and other admins.
+* Has a completely separate dashboard and permissions.
+
+## Admin Features
+
+* Dashboard with hiring statistics (jobs, candidates, applications, interviews, offers, hiring funnel).
+* Full Job CRUD (Create, Edit, Delete, Close/Reopen).
+* Candidate management.
+* Search and filter candidates.
+* Candidate comparison.
+* Move candidates through hiring stages.
+* View resume preview.
+* View parsed resume.
+* View complete Gemini analysis.
+* Schedule interviews.
+* Submit interview feedback.
+* Add private recruiter notes.
+* Create new Admin accounts.
+* View notifications and activity logs.
+
+## Candidate Features
+
+* Complete profile page.
+* Resume upload (PDF/DOCX).
+* Resume preview.
+* Browse jobs.
+* Search jobs.
+* Apply for jobs.
+* Application history.
+* Current application status.
+* Upcoming interviews.
+* Notifications.
+* AI analysis summary.
+
+## Resume Upload & Parsing
+
+Upload resumes to Supabase Storage.
+
+After upload:
+
+* Extract name, email, phone, education, experience, companies, projects, certifications, skills, and years of experience.
+* Save parsed information to the database.
+* Never overwrite fields that the candidate manually edits later.
+
+## Gemini Matching
+
+When a candidate applies:
+Send the Job Description, Required Skills, Parsed Resume, and Resume Text to Gemini.
+
+Gemini should return structured JSON containing:
+
+* Match Score (0–100)
+* Matching Skills
+* Missing Skills
+* Experience Comparison
+* Strengths
+* Weaknesses
+* Recruiter Summary
+* Hiring Recommendation
+
+Store the full analysis in the database.
+
+Candidates should only see:
+
+* Match Score
+* Summary
+* Strengths
+* Improvement Suggestions
+
+Admins should see the complete analysis including the hiring recommendation.
+
+## Hiring Pipeline
+
+Application stages:
+Applied → Screening → Shortlisted → Technical Interview → HR Interview → Offer → Hired → Rejected
+
+Every stage change should be recorded with timestamp, admin, previous status, new status, and comments.
+
+## Interviews
+
+Admins can schedule interviews by selecting candidate, job, interviewer, date, time, duration, meeting type, and notes.
+
+Admins can submit interview feedback including technical rating, communication, problem solving, culture fit, comments, and recommendation.
+
+## n8n Integration
+
+Use only **two** workflows:
+
+1. **Interview Workflow**
+   Backend → Webhook → n8n → Google Calendar Event → Interview Email
+
+2. **Application Workflow**
+   Backend → Webhook → n8n → Application Confirmation Email
+
+Keep webhook URLs configurable through environment variables.
+
+## Database
+
+Before generating any code, first design the complete database architecture.
+
+Generate a `supabase_schema.sql` file that creates the entire database using:
+
+* UUID primary keys
+* Foreign keys
+* Indexes
+* Constraints
+* Enums where appropriate
+* `created_at` and `updated_at` timestamps
+* Automatic `updated_at` triggers
+* Proper relationships
+* No sample candidates or jobs
+
+The schema must support:
+
+* Users
+* Candidate Profiles
+* Jobs
+* Applications
+* Application Status History
+* Skills
+* Candidate Skills
+* Job Skills
+* Interviews
+* Interview Feedback
+* Recruiter Notes
+* Notifications
+* Resume Analysis
+* Activity Logs
+
+The backend must use this schema directly with Supabase. Do not generate a separate local database implementation.
+
+## UI
+
+Create a modern, minimal, responsive interface using Tailwind CSS. Prioritize usability over visual effects. Do not use unnecessary animations, Framer Motion, or heavy UI libraries.
+
+## Documentation
+
+Generate:
+
+* `.env.example` files (frontend and backend)
+* `README.md` with setup instructions
+* `database_setup.md` explaining how to run the SQL file in Supabase, create the Storage bucket, configure Firebase, configure n8n, and where each environment variable comes from.
+
+The final project should be a complete, working ATS that is lightweight, logically structured, easy to run locally, easy to understand, and suitable for real hiring workflows without relying on any platform-specific services.
