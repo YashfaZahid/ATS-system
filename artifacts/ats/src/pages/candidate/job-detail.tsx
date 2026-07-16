@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { useRoute, Link } from 'wouter';
-import { useGetJob, useCreateApplication, useGetMe } from '@workspace/api-client-react';
+import { useGetJob, useCreateApplication, useGetMe, useGetCandidate } from '@workspace/api-client-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { ArrowLeft, MapPin, Briefcase, Clock, Building, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, MapPin, Briefcase, Clock, Building, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { getListApplicationsQueryKey } from '@workspace/api-client-react';
@@ -18,6 +18,10 @@ export default function JobDetail() {
   
   const { data: job, isLoading } = useGetJob(id, { query: { enabled: !!id } });
   const { data: profile } = useGetMe();
+  // Load the full candidate profile to check resume status
+  const userId = (profile as any)?.id || '';
+  const { data: candidate } = useGetCandidate(userId, { query: { enabled: !!userId } });
+
   const createApplication = useCreateApplication();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -25,6 +29,8 @@ export default function JobDetail() {
   const [coverLetter, setCoverLetter] = useState('');
   const [open, setOpen] = useState(false);
   const [applied, setApplied] = useState(false);
+
+  const hasResume = !!(candidate?.resumeUrl);
 
   const handleApply = async () => {
     try {
@@ -102,9 +108,22 @@ export default function JobDetail() {
                         <span className="text-gray-500">Email:</span>
                         <span className="font-medium text-gray-900 dark:text-white">{profile?.email}</span>
                       </div>
-                      {!profile?.resumeUrl && (
-                        <div className="mt-4 p-3 bg-yellow-50 text-yellow-800 rounded-md border border-yellow-200">
-                          <strong>Note:</strong> You don't have a resume uploaded. Please <Link href="/profile" className="underline font-bold">go to your profile</Link> to add one before applying.
+                      {hasResume ? (
+                        <div className="flex justify-between items-center mt-1 pt-2 border-t border-gray-100 dark:border-zinc-800">
+                          <span className="text-gray-500">Resume:</span>
+                          <span className="flex items-center text-green-600 dark:text-green-400 font-medium text-xs">
+                            <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                            {candidate?.resumeFileName || 'Uploaded'}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300 rounded-md border border-yellow-200 dark:border-yellow-900 flex items-start gap-2">
+                          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                          <span>
+                            <strong>No resume uploaded.</strong> Please{' '}
+                            <Link href="/profile" className="underline font-bold">go to your profile</Link>{' '}
+                            to add one before applying.
+                          </span>
                         </div>
                       )}
                     </div>
@@ -123,7 +142,11 @@ export default function JobDetail() {
                   </div>
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                    <Button onClick={handleApply} disabled={createApplication.isPending || !profile?.resumeUrl}>
+                    <Button
+                      onClick={handleApply}
+                      disabled={createApplication.isPending || !hasResume}
+                      title={!hasResume ? "Upload a resume before applying" : undefined}
+                    >
                       {createApplication.isPending ? "Submitting..." : "Submit Application"}
                     </Button>
                   </DialogFooter>

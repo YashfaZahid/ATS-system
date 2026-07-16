@@ -49,7 +49,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     };
     next();
   } catch (err) {
-    res.status(401).json({ error: "Invalid token" });
+    const message = err instanceof Error ? err.message : String(err);
+    req.log?.warn({ err: message }, "Token verification failed");
+    const isConfigError =
+      message.includes("FIREBASE_SERVICE_ACCOUNT_JSON") ||
+      message.includes("service account");
+    res.status(401).json({
+      error: isConfigError
+        ? "Server Firebase Admin is misconfigured (need service account JSON, not web config)"
+        : "Invalid token",
+    });
   }
 }
 

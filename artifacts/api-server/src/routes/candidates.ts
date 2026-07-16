@@ -2,6 +2,8 @@ import { Router } from "express";
 import { supabase } from "../lib/supabase.js";
 import { requireAuth, requireAdmin } from "../middlewares/auth.js";
 import { parseResumeFromFile, parseResumeWithGemini } from "../lib/gemini.js";
+import { getEmbedding, resumeToText } from "../lib/embeddings.js";
+import { rerunAnalysesForCandidate } from "../lib/resume-analysis.js";
 
 const router = Router();
 
@@ -68,6 +70,133 @@ router.post("/compare", requireAuth, requireAdmin, async (req, res) => {
     candidates: (candidates ?? []).map(formatCandidate),
     analyses,
   });
+});
+
+// Backfill embeddings for candidates missing them (admin only)
+router.post("/backfill-embeddings", requireAuth, requireAdmin, async (req, res) => {
+  const { limit = 50 } = req.body as { limit?: number };
+  const batchSize = Math.min(Number(limit) || 50, 100);
+
+  const { data: rows, error } = await supabase
+    .from("candidates")
+    .select("id, parsed_resume")
+    .is("resume_embedding", null)
+    .not("parsed_resume", "is", null)
+    .limit(batchSize);
+
+  if (error) {
+    res.status(500).json({ error: "Failed to fetch candidates", details: error.message });
+    return;
+  }
+
+  let updated = 0;
+  const failures: string[] = [];
+
+  for (const row of rows ?? []) {
+    const parsed = (row.parsed_resume as Record<string, unknown>) ?? {};
+    const text = resumeToText(parsed);
+    if (text.length <= 20) {
+      failures.push(`${row.id}: insufficient parsed resume text`);
+      continue;
+    }
+    try {
+      const embedding = await getEmbedding(text);
+      const { error: updateError } = await supabase
+        .from("candidates")
+        .update({ resume_embedding: embedding, updated_at: new Date().toISOString() })
+        .eq("id", row.id);
+      if (updateError) {
+        failures.push(`${row.id}: ${updateError.message}`);
+      } else {
+        updated++;
+      }
+    } catch (err) {
+      failures.push(`${row.id}: ${err instanceof Error ? err.message : "embedding failed"}`);
+    }
+  }
+
+  res.json({
+    processed: rows?.length ?? 0,
+    updated,
+    failures,
+    success: true,
+  });
+});
+
+// Semantic resume search (admin only) — must come before /:id
+router.post("/search", requireAuth, requireAdmin, async (req, res) => {
+  const { query, threshold = 0.25, limit = 20 } = req.body as {
+    query: string;
+    threshold?: number;
+    limit?: number;
+  };
+
+  if (!query || query.trim().length < 3) {
+    res.status(400).json({ error: "Query must be at least 3 characters" });
+    return;
+  }
+
+  try {
+    const embedding = await getEmbedding(query.slice(0, 1000));
+    const { data, error } = await supabase.rpc("match_resumes", {
+      query_embedding: embedding,
+      match_threshold: threshold,
+      match_count: Math.min(Number(limit), 50),
+    });
+
+    if (error) {
+      req.log.error({ error }, "match_resumes RPC failed");
+      res.status(500).json({ error: "Search failed", details: error.message });
+      return;
+    }
+
+    // Enrich with skills
+    const results = (data ?? []) as Array<Record<string, unknown>>;
+    const ids = results.map((r) => r["id"] as string);
+    const { data: skillRows } = ids.length
+      ? await supabase
+          .from("candidate_skills")
+          .select("candidate_id, skills(name)")
+          .in("candidate_id", ids)
+      : { data: [] };
+
+    const skillMap: Record<string, string[]> = {};
+    for (const row of skillRows ?? []) {
+      const r = row as Record<string, unknown>;
+      const cid = r["candidate_id"] as string;
+      const sname = (r["skills"] as { name: string } | null)?.name;
+      if (sname) {
+        skillMap[cid] = skillMap[cid] ?? [];
+        skillMap[cid].push(sname);
+      }
+    }
+
+    res.json({
+      candidates: results.map((r) => ({
+        id: r["id"],
+        userId: r["user_id"],
+        name: r["name"],
+        email: r["email"],
+        phone: r["phone"] ?? null,
+        avatarUrl: r["avatar_url"] ?? null,
+        headline: r["headline"] ?? null,
+        summary: r["summary"] ?? null,
+        location: r["location"] ?? null,
+        linkedinUrl: r["linkedin_url"] ?? null,
+        githubUrl: r["github_url"] ?? null,
+        portfolioUrl: r["portfolio_url"] ?? null,
+        resumeUrl: r["resume_url"] ?? null,
+        resumeFileName: r["resume_file_name"] ?? null,
+        yearsOfExperience: r["years_of_experience"] ?? null,
+        skills: skillMap[r["id"] as string] ?? [],
+        similarity: Math.round(Number(r["similarity"]) * 100),
+      })),
+      total: results.length,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Embedding generation failed");
+    res.status(500).json({ error: "Failed to generate search embedding. Model may still be loading — try again in a moment." });
+  }
 });
 
 // Resolve a candidate row by either candidate.id or candidate.user_id
@@ -213,18 +342,40 @@ router.post("/:id/resume", requireAuth, async (req, res) => {
     req.log.warn({ err }, "Failed to parse resume content");
   }
 
-  const { data: updated } = await supabase
+  // Generate semantic embedding from parsed resume text
+  let resumeEmbedding: number[] | null = null;
+  let embeddingError: string | null = null;
+  try {
+    const embeddingText = resumeToText(parsedResume);
+    if (embeddingText.length > 20) {
+      resumeEmbedding = await getEmbedding(embeddingText);
+    } else {
+      embeddingError = "Parsed resume had too little text for embedding";
+    }
+  } catch (err) {
+    embeddingError = err instanceof Error ? err.message : "Embedding generation failed";
+    req.log.warn({ err }, "Resume embedding generation failed — skipping");
+  }
+
+  const { data: updated, error: updateError } = await supabase
     .from("candidates")
     .update({
       resume_url: fileUrl,
       resume_file_name: fileName,
       parsed_resume: parsedResume,
       years_of_experience: parsedResume["yearsOfExperience"] ?? null,
+      ...(resumeEmbedding ? { resume_embedding: resumeEmbedding } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", candidateId)
     .select()
     .single();
+
+  if (updateError) {
+    req.log.error({ updateError }, "Failed to save resume");
+    res.status(500).json({ error: "Failed to save resume", details: updateError.message });
+    return;
+  }
 
   // Sync skills
   if (Array.isArray(parsedResume["skills"])) {
@@ -241,9 +392,16 @@ router.post("/:id/resume", requireAuth, async (req, res) => {
     }
   }
 
+  // Re-run Gemini job-fit analysis for existing applications (non-blocking)
+  rerunAnalysesForCandidate(candidateId).catch((err) =>
+    req.log.warn({ err }, "Failed to re-run application analyses after resume upload")
+  );
+
   res.json({
     resumeUrl: updated?.resume_url ?? fileUrl,
     parsedResume,
+    embeddingGenerated: !!resumeEmbedding,
+    embeddingError,
     success: true,
   });
 });

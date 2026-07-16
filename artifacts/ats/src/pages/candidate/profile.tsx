@@ -135,10 +135,13 @@ export default function Profile() {
           fileSize: file.size,
           mimeType: file.type,
           fileContent: base64Content,
-        } as any
+        }
       });
 
-      toast({ title: "Resume uploaded successfully", description: "We've analyzed your resume and updated your skills." });
+      toast({
+        title: "Resume uploaded successfully",
+        description: "We've parsed your resume, updated your skills, and indexed it for matching.",
+      });
       queryClient.invalidateQueries({ queryKey: getGetCandidateQueryKey(userId) });
       
     } catch (error: any) {

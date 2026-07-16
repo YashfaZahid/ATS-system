@@ -1,13 +1,9 @@
+import "./load-env";
 import app from "./app";
 import { logger } from "./lib/logger";
+import { warmupEmbeddingModel } from "./lib/embeddings";
 
-const rawPort = process.env["PORT"];
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
+const rawPort = process.env["PORT"] ?? "3001";
 
 const port = Number(rawPort);
 
@@ -22,4 +18,8 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  warmupEmbeddingModel()
+    .then(() => logger.info("Embedding model ready"))
+    .catch((err) => logger.warn({ err }, "Embedding model warmup failed — will retry on first use"));
 });

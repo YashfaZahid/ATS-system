@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { supabase } from "../lib/supabase.js";
 import { requireAuth, requireAdmin } from "../middlewares/auth.js";
-import { analyzeResumeForJob } from "../lib/gemini.js";
 import { triggerApplicationWorkflow } from "../lib/n8n.js";
+import { runGeminiAnalysisForApplication } from "../lib/resume-analysis.js";
 import { formatAnalysis } from "./candidates.js";
 
 const router = Router();
@@ -141,7 +141,7 @@ router.post("/", requireAuth, async (req, res) => {
   // Kick off Gemini analysis asynchronously
   const skillNames = ((job.job_skills as Array<{ skills: { name: string } }>) ?? [])
     .map((js) => js.skills?.name).filter(Boolean);
-  runGeminiAnalysis(app.id, job, candidate, skillNames, user.id).catch(() => {});
+  runGeminiAnalysisForApplication(app.id, job, candidate, skillNames).catch(() => {});
 
   res.status(201).json(formatApplication(app));
 });
@@ -204,13 +204,12 @@ router.patch("/:id/stage", requireAuth, requireAdmin, async (req, res) => {
     comment: comment ?? null,
   });
 
-  // Notify candidate
-  const { data: candidateUser } = await supabase
-    .from("users").select("id").eq("id", (updated as unknown as Record<string, unknown>)["candidates"] ? 
-      (updated as unknown as Record<string, Record<string, unknown>>)["candidates"]["user_id"] : "").single();
-  if (candidateUser) {
+  // Notify candidate about their stage change
+  const candidateRecord = (updated as unknown as Record<string, Record<string, unknown> | null>)?.["candidates"];
+  const notifyUserId = candidateRecord?.["user_id"] as string | null;
+  if (notifyUserId) {
     await supabase.from("notifications").insert({
-      user_id: candidateUser.id,
+      user_id: notifyUserId,
       type: "stage_changed",
       title: "Application status updated",
       message: `Your application stage has been updated to: ${stage.replace(/_/g, " ")}`,
@@ -283,41 +282,6 @@ router.post("/:id/notes", requireAuth, requireAdmin, async (req, res) => {
   }
   res.status(201).json(formatNote(note));
 });
-
-async function runGeminiAnalysis(
-  appId: string,
-  job: Record<string, unknown>,
-  candidate: Record<string, unknown>,
-  skillNames: string[],
-  userId: string
-) {
-  try {
-    const parsedResume = (candidate["parsed_resume"] as Record<string, unknown>) ?? {};
-    const resumeText = JSON.stringify(parsedResume);
-    const analysis = await analyzeResumeForJob(
-      job["title"] as string,
-      job["description"] as string,
-      skillNames,
-      parsedResume,
-      resumeText
-    );
-    await supabase.from("resume_analyses").insert({
-      application_id: appId,
-      match_score: analysis.matchScore,
-      matching_skills: analysis.matchingSkills,
-      missing_skills: analysis.missingSkills,
-      experience_comparison: analysis.experienceComparison,
-      strengths: analysis.strengths,
-      weaknesses: analysis.weaknesses,
-      recruiter_summary: analysis.recruiterSummary,
-      hiring_recommendation: analysis.hiringRecommendation,
-      summary: analysis.summary,
-      improvement_suggestions: analysis.improvementSuggestions,
-    });
-  } catch (err) {
-    console.error("Gemini analysis failed:", err);
-  }
-}
 
 function formatApplication(a: Record<string, unknown>) {
   return {

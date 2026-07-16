@@ -11,4 +11,5 @@ export interface ResumeUploadInput {
   fileUrl: string;
   fileSize: number;
   mimeType: string;
+  fileContent?: string;
 }

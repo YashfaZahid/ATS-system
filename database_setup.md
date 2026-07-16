@@ -111,7 +111,24 @@ If `N8N_APPLICATION_WEBHOOK_URL` or `N8N_INTERVIEW_WEBHOOK_URL` are left blank, 
 
 ---
 
-## 5. Environment Files Summary
+## 6. Vector Search (Semantic Resume Matching)
+
+The schema in `supabase_schema.sql` includes pgvector setup (`resume_embedding` column + `match_resumes` RPC). If you set up the database before this was added, run `vector_search_setup.sql` in the SQL Editor instead.
+
+**How it works:**
+1. Candidate uploads a PDF/DOCX resume on their profile page
+2. Backend parses the document with **Gemini** → structured JSON
+3. Backend embeds the resume text locally with **all-MiniLM-L6-v2** (384-dim)
+4. Embedding is stored in Supabase `candidates.resume_embedding`
+5. Admin uses **AI Semantic Search** on the Candidates page to match job descriptions
+
+**Backfill existing candidates:** `POST /api/candidates/backfill-embeddings` (admin) generates embeddings for candidates who uploaded resumes before vector search was enabled.
+
+No extra API keys are needed for embeddings — the model runs on the API server and caches to `.model-cache/`.
+
+---
+
+## 7. Environment Files Summary
 
 | File | Purpose |
 |------|---------|

@@ -44,15 +44,24 @@ Fill in values from your Firebase Console, Supabase Dashboard, and Google AI Stu
 
 ### 3. Install & run
 
+Requires **Node.js 20+** and **pnpm 9+** (works on Windows, macOS, and Linux).
+
 ```bash
 pnpm install
 
-# Run API server
-pnpm --filter @workspace/api-server run dev
+# Terminal 1 — API server (http://localhost:3001)
+pnpm run dev:api
 
-# Run frontend (separate terminal)
-pnpm --filter @workspace/ats run dev
+# Terminal 2 — Frontend (http://localhost:5173, proxies /api → API)
+pnpm run dev:web
+
+# Or both at once:
+pnpm run dev:all
 ```
+
+**Important credentials**
+- Backend `FIREBASE_SERVICE_ACCOUNT_JSON` must be a **service account** JSON (`type: "service_account"` with `private_key`). The web/client Firebase config belongs only in `artifacts/ats/.env` as `VITE_FIREBASE_*`.
+- Frontend `VITE_SUPABASE_ANON_KEY` is required for resume uploads (anon/public key from Supabase → Settings → API).
 
 ### 4. First admin user
 The first admin cannot be created via the UI (admin accounts are admin-only). Create it directly in Supabase:

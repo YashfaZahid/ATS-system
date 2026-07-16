@@ -366,11 +366,15 @@ export interface ResumeUploadInput {
   fileUrl: string;
   fileSize: number;
   mimeType: string;
+  /** Base64-encoded PDF or DOCX bytes for Gemini document parsing */
+  fileContent?: string;
 }
 
 export interface ResumeUploadResult {
   resumeUrl: string;
   parsedResume?: ParsedResume;
+  embeddingGenerated?: boolean;
+  embeddingError?: string | null;
   success: boolean;
 }
 

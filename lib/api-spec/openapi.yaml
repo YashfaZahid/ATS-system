@@ -463,6 +463,43 @@ paths:
               schema:
                 $ref: "#/components/schemas/CandidatesPage"
 
+  /candidates/search:
+    post:
+      operationId: semanticSearchCandidates
+      tags: [candidates]
+      summary: Semantic resume search by job description (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SemanticSearchInput"
+      responses:
+        "200":
+          description: Ranked candidates by embedding similarity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SemanticSearchResult"
+
+  /candidates/backfill-embeddings:
+    post:
+      operationId: backfillCandidateEmbeddings
+      tags: [candidates]
+      summary: Generate missing resume embeddings for existing candidates (admin only)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BackfillEmbeddingsInput"
+      responses:
+        "200":
+          description: Backfill result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackfillEmbeddingsResult"
+
   /candidates/{id}:
     get:
       operationId: getCandidate
@@ -1244,6 +1281,9 @@ components:
           type: integer
         mimeType:
           type: string
+        fileContent:
+          type: string
+          description: Base64-encoded PDF or DOCX bytes for Gemini document parsing
       required: [fileName, fileUrl, fileSize, mimeType]
 
     ResumeUploadResult:
@@ -1253,9 +1293,101 @@ components:
           type: string
         parsedResume:
           $ref: "#/components/schemas/ParsedResume"
+        embeddingGenerated:
+          type: boolean
+        embeddingError:
+          type: ["string", "null"]
         success:
           type: boolean
       required: [resumeUrl, success]
+
+    SemanticSearchInput:
+      type: object
+      properties:
+        query:
+          type: string
+        threshold:
+          type: number
+          default: 0.25
+        limit:
+          type: integer
+          default: 20
+      required: [query]
+
+    SemanticSearchCandidate:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+        headline:
+          type: ["string", "null"]
+        summary:
+          type: ["string", "null"]
+        location:
+          type: ["string", "null"]
+        linkedinUrl:
+          type: ["string", "null"]
+        githubUrl:
+          type: ["string", "null"]
+        portfolioUrl:
+          type: ["string", "null"]
+        resumeUrl:
+          type: ["string", "null"]
+        resumeFileName:
+          type: ["string", "null"]
+        yearsOfExperience:
+          type: ["integer", "null"]
+        skills:
+          type: array
+          items:
+            type: string
+        similarity:
+          type: integer
+          description: Match score 0-100 (cosine similarity percentage)
+      required: [id, userId, name, email, skills, similarity]
+
+    SemanticSearchResult:
+      type: object
+      properties:
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/SemanticSearchCandidate"
+        total:
+          type: integer
+      required: [candidates, total]
+
+    BackfillEmbeddingsInput:
+      type: object
+      properties:
+        limit:
+          type: integer
+          default: 50
+
+    BackfillEmbeddingsResult:
+      type: object
+      properties:
+        processed:
+          type: integer
+        updated:
+          type: integer
+        failures:
+          type: array
+          items:
+            type: string
+        success:
+          type: boolean
+      required: [processed, updated, failures, success]
 
     ParsedResume:
       type: object
