@@ -94,34 +94,48 @@ export default function Profile() {
       return;
     }
 
+    const candidateId = candidate?.id || userId;
     setUploading(true);
     try {
-      // 1. Upload to Supabase Storage
-      const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-      const filePath = `${userId}/${fileName}`;
+      // 1. Read file as base64 for Gemini document understanding
+      const base64Content = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          // Strip the data URL prefix (e.g. "data:application/pdf;base64,")
+          resolve(result.split(',')[1] || '');
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // 2. Upload to Supabase Storage
+      const safeFileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const filePath = `${userId}/${safeFileName}`;
       
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('resumes')
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
-      // 2. Get public URL
+      // 3. Get public URL
       const { data: publicUrlData } = supabase.storage
         .from('resumes')
         .getPublicUrl(filePath);
 
       const publicUrl = publicUrlData.publicUrl;
 
-      // 3. Call our API to parse and save
+      // 4. Call backend to parse + save (send base64 so Gemini can read the binary)
       await uploadResume.mutateAsync({
-        id: userId,
+        id: candidateId,
         data: {
           fileName: file.name,
           fileUrl: publicUrl,
           fileSize: file.size,
-          mimeType: file.type
-        }
+          mimeType: file.type,
+          fileContent: base64Content,
+        } as any
       });
 
       toast({ title: "Resume uploaded successfully", description: "We've analyzed your resume and updated your skills." });

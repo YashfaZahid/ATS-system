@@ -72,16 +72,7 @@ Return ONLY valid JSON (no markdown, no explanation) matching this exact structu
   }
 }
 
-export async function parseResumeWithGemini(resumeText: string): Promise<Record<string, unknown>> {
-  const model = getClient().getGenerativeModel({ model: "gemini-1.5-flash" });
-
-  const prompt = `Extract structured data from this resume text. Return ONLY valid JSON (no markdown).
-
-RESUME TEXT:
-${resumeText.slice(0, 4000)}
-
-Return JSON matching this structure:
-{
+const RESUME_JSON_SCHEMA = `{
   "name": "<full name or null>",
   "email": "<email or null>",
   "phone": "<phone or null>",
@@ -94,13 +85,40 @@ Return JSON matching this structure:
   "yearsOfExperience": <integer or null>
 }`;
 
-  const result = await model.generateContent(prompt);
-  const text = result.response.text().trim();
-  const cleaned = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+const EMPTY_RESUME = { skills: [], education: [], experience: [], companies: [], projects: [], certifications: [] };
 
+function cleanJson(text: string): string {
+  return text.trim().replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+}
+
+export async function parseResumeWithGemini(resumeText: string): Promise<Record<string, unknown>> {
+  const model = getClient().getGenerativeModel({ model: "gemini-1.5-flash" });
+  const prompt = `Extract structured data from this resume text. Return ONLY valid JSON (no markdown, no explanation).\n\nRESUME TEXT:\n${resumeText.slice(0, 4000)}\n\nReturn JSON matching this structure:\n${RESUME_JSON_SCHEMA}`;
+  const result = await model.generateContent(prompt);
   try {
-    return JSON.parse(cleaned) as Record<string, unknown>;
+    return JSON.parse(cleanJson(result.response.text())) as Record<string, unknown>;
   } catch {
-    return { skills: [], education: [], experience: [], companies: [], projects: [], certifications: [] };
+    return EMPTY_RESUME;
+  }
+}
+
+/**
+ * Parse a resume directly from its binary content (PDF or DOCX) using
+ * Gemini's native document understanding — no text extraction library needed.
+ */
+export async function parseResumeFromFile(
+  base64Content: string,
+  mimeType: string
+): Promise<Record<string, unknown>> {
+  const model = getClient().getGenerativeModel({ model: "gemini-1.5-flash" });
+  const prompt = `Extract structured data from this resume document. Return ONLY valid JSON (no markdown, no explanation).\n\nReturn JSON matching this structure:\n${RESUME_JSON_SCHEMA}`;
+  try {
+    const result = await model.generateContent([
+      { inlineData: { mimeType, data: base64Content } },
+      { text: prompt },
+    ]);
+    return JSON.parse(cleanJson(result.response.text())) as Record<string, unknown>;
+  } catch {
+    return EMPTY_RESUME;
   }
 }

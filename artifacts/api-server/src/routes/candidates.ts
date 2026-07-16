@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { supabase } from "../lib/supabase.js";
 import { requireAuth, requireAdmin } from "../middlewares/auth.js";
-import { parseResumeWithGemini } from "../lib/gemini.js";
+import { parseResumeFromFile, parseResumeWithGemini } from "../lib/gemini.js";
 
 const router = Router();
 
@@ -70,10 +70,25 @@ router.post("/compare", requireAuth, requireAdmin, async (req, res) => {
   });
 });
 
+// Resolve a candidate row by either candidate.id or candidate.user_id
+async function resolveCandidateId(id: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("candidates")
+    .select("id")
+    .or(`id.eq.${id},user_id.eq.${id}`)
+    .single();
+  return data?.id ?? null;
+}
+
 // Get candidate
 router.get("/:id", requireAuth, async (req, res) => {
   const user = req.user!;
-  const candidateId = req.params["id"];
+  const resolvedId = await resolveCandidateId(String(req.params["id"]));
+
+  if (!resolvedId) {
+    res.status(404).json({ error: "Candidate not found" });
+    return;
+  }
 
   // Candidates can only view their own profile
   if (user.role === "candidate") {
@@ -82,7 +97,7 @@ router.get("/:id", requireAuth, async (req, res) => {
       .select("id")
       .eq("user_id", user.id)
       .single();
-    if (!own || own.id !== candidateId) {
+    if (!own || own.id !== resolvedId) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
@@ -91,7 +106,7 @@ router.get("/:id", requireAuth, async (req, res) => {
   const { data: candidate } = await supabase
     .from("candidates")
     .select("*, candidate_skills(skills(name))")
-    .eq("id", candidateId)
+    .eq("id", resolvedId)
     .single();
 
   if (!candidate) {
@@ -104,7 +119,7 @@ router.get("/:id", requireAuth, async (req, res) => {
 // Update candidate
 router.patch("/:id", requireAuth, async (req, res) => {
   const user = req.user!;
-  const candidateId = req.params["id"];
+  const candidateId = await resolveCandidateId(String(req.params["id"])) ?? String(req.params["id"]);
 
   if (user.role === "candidate") {
     const { data: own } = await supabase
@@ -151,7 +166,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
 // Upload resume
 router.post("/:id/resume", requireAuth, async (req, res) => {
   const user = req.user!;
-  const candidateId = req.params["id"];
+  const candidateId = await resolveCandidateId(String(req.params["id"])) ?? String(req.params["id"]);
 
   if (user.role === "candidate") {
     const { data: own } = await supabase
@@ -165,11 +180,12 @@ router.post("/:id/resume", requireAuth, async (req, res) => {
     }
   }
 
-  const { fileName, fileUrl } = req.body as {
+  const { fileName, fileUrl, fileContent, mimeType } = req.body as {
     fileName: string;
     fileUrl: string;
     fileSize?: number;
     mimeType?: string;
+    fileContent?: string; // base64-encoded file bytes from frontend
   };
 
   if (!fileName || !fileUrl) {
@@ -177,16 +193,21 @@ router.post("/:id/resume", requireAuth, async (req, res) => {
     return;
   }
 
-  // Download file content for parsing
+  // Parse resume content with Gemini
   let parsedResume: Record<string, unknown> = {
     skills: [], education: [], experience: [], companies: [], projects: [], certifications: []
   };
   try {
-    const fileRes = await fetch(fileUrl);
-    if (fileRes.ok) {
-      const buffer = await fileRes.arrayBuffer();
-      const text = Buffer.from(buffer).toString("utf-8");
-      parsedResume = await parseResumeWithGemini(text.slice(0, 5000));
+    if (fileContent && mimeType) {
+      // Use Gemini's native document understanding (PDF / DOCX inline data)
+      parsedResume = await parseResumeFromFile(fileContent, mimeType);
+    } else {
+      // Fallback: fetch plain text (works for .txt resumes)
+      const fileRes = await fetch(fileUrl);
+      if (fileRes.ok) {
+        const text = await fileRes.text();
+        parsedResume = await parseResumeWithGemini(text.slice(0, 5000));
+      }
     }
   } catch (err) {
     req.log.warn({ err }, "Failed to parse resume content");
