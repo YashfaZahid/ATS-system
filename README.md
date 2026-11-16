@@ -1,107 +1,77 @@
-# ATS — Applicant Tracking System
+# ATS
 
-A complete, production-ready Applicant Tracking System for small and medium-sized companies. Built with React + Vite (frontend), Express (backend), Firebase Auth, Supabase PostgreSQL/Storage, and Gemini AI resume matching.
+An applicant tracking system for a small hiring team. Candidates browse roles and apply. Recruiters run the pipeline, schedule interviews, and read an AI pass over each resume.
 
-## Features
+## What it does
 
-- **Candidate Portal**: Browse jobs, apply, track status, view AI analysis, manage profile & resume
-- **Admin Dashboard**: Full hiring pipeline, candidate management, interview scheduling, analytics
-- **AI-Powered**: Gemini analyzes resumes against job requirements — match score, strengths, gaps, recommendation
-- **Interview Management**: Schedule, feedback forms, calendar integration via n8n
-- **Automation**: n8n webhooks for confirmation emails and Google Calendar events
+- **Candidate portal.** Jobs, applications, status, profile, and resume upload.
+- **Recruiter workspace.** Pipeline stages, candidate records, interview scheduling, notes, and activity history.
+- **Resume analysis.** Gemini compares a resume to the job and returns a match score, strengths, gaps, and a recommendation.
+- **Semantic search.** A local embedding model (384 dimensions) runs on the API server. Vectors are stored on `candidates.resume_embedding` and searched with pgvector. No extra embedding API key.
+- **Interviews.** Schedule, feedback, and optional n8n hooks for email and calendar.
 
-## Tech Stack
+Every stage change is logged with who moved it and when.
+
+## Stack
 
 | Layer | Technology |
-|-------|-----------|
-| Frontend | React 18, Vite, TypeScript, Tailwind CSS |
-| Backend | Node.js, Express 5, TypeScript |
+| --- | --- |
+| Frontend | React 18, Vite, TypeScript, Tailwind |
+| API | Node.js, Express 5, TypeScript |
 | Auth | Firebase Authentication |
-| Database | Supabase PostgreSQL |
-| File Storage | Supabase Storage |
-| AI | Google Gemini 1.5 Flash |
-| Automation | n8n (optional) |
+| Data | Supabase Postgres and Storage |
+| Vectors | pgvector, local 384-d embeddings |
+| Analysis | Gemini |
+| Automation | n8n, optional |
 
-## Setup
+## Run
 
-### Prerequisites
-- Node.js 18+, pnpm 8+
-- Firebase project (Auth enabled)
-- Supabase project
-- Gemini API key
+Node.js 20+ and pnpm 9+.
 
-### 1. Database
-Run `supabase_schema.sql` in Supabase SQL Editor. See [database_setup.md](database_setup.md) for full instructions.
+```bash
+pnpm install
+```
 
-### 2. Environment variables
+1. Run `supabase_schema.sql` in the Supabase SQL editor. Details are in [database_setup.md](database_setup.md). If the database predates vector search, run `vector_search_setup.sql` as well.
+2. Copy the env examples and fill them from Firebase, Supabase, and Google AI Studio.
 
 ```bash
 cp artifacts/ats/.env.example artifacts/ats/.env
 cp artifacts/api-server/.env.example artifacts/api-server/.env
 ```
 
-Fill in values from your Firebase Console, Supabase Dashboard, and Google AI Studio. See [database_setup.md](database_setup.md).
-
-### 3. Install & run
-
-Requires **Node.js 20+** and **pnpm 9+** (works on Windows, macOS, and Linux).
+3. Start both apps.
 
 ```bash
-pnpm install
-
-# Terminal 1 — API server (http://localhost:3001)
-pnpm run dev:api
-
-# Terminal 2 — Frontend (http://localhost:5173, proxies /api → API)
-pnpm run dev:web
-
-# Or both at once:
-pnpm run dev:all
+pnpm run dev:api    # http://localhost:3001
+pnpm run dev:web    # http://localhost:5173
+pnpm run dev:all    # both
 ```
 
-**Important credentials**
-- Backend `FIREBASE_SERVICE_ACCOUNT_JSON` must be a **service account** JSON (`type: "service_account"` with `private_key`). The web/client Firebase config belongs only in `artifacts/ats/.env` as `VITE_FIREBASE_*`.
-- Frontend `VITE_SUPABASE_ANON_KEY` is required for resume uploads (anon/public key from Supabase → Settings → API).
+`FIREBASE_SERVICE_ACCOUNT_JSON` on the API must be a service-account JSON (`type: "service_account"` and a private key). The web Firebase config belongs only in `artifacts/ats/.env` as `VITE_FIREBASE_*`. Resume uploads need `VITE_SUPABASE_ANON_KEY`.
 
-### 4. First admin user
-The first admin cannot be created via the UI (admin accounts are admin-only). Create it directly in Supabase:
+The first admin cannot be created from the UI. Insert that user in Supabase after the schema is applied. The SQL snippet is in [database_setup.md](database_setup.md).
 
-```sql
--- After running supabase_schema.sql, insert your first admin
--- First create the user through Firebase Auth manually, then:
-INSERT INTO users (firebase_uid, email, name, role)
-VALUES ('firebase-uid-here', 'admin@yourcompany.com', 'Admin Name', 'admin');
+Backfill embeddings for resumes uploaded before vector search existed:
+
+```http
+POST /api/candidates/backfill-embeddings
 ```
 
-Or use the Supabase dashboard to insert the row directly.
+Admin only. The model caches under `.model-cache/`.
 
-## Roles
+## Layout
 
-| Role | Access |
-|------|--------|
-| `candidate` | Sign up publicly. Can browse jobs, apply, track applications, manage profile |
-| `admin` | Created by existing admin. Full access to all hiring operations |
-
-## Hiring Pipeline
-
-```
-Applied → Screening → Shortlisted → Technical Interview → HR Interview → Offer → Hired
-                                                                               ↘ Rejected
+```text
+artifacts/ats/          React app
+artifacts/api-server/   Express API, Gemini client, embeddings
+lib/api-spec/           OpenAPI source
+lib/api-client-react/   Generated React Query hooks
+lib/api-zod/            Generated Zod schemas
+supabase_schema.sql
+database_setup.md
 ```
 
-Every stage transition is logged with timestamp, who changed it, and optional comments.
+## Limits
 
-## Project Structure
-
-```
-artifacts/
-  ats/              Frontend React app
-  api-server/       Express API server
-lib/
-  api-spec/         OpenAPI spec (source of truth)
-  api-client-react/ Generated React Query hooks
-  api-zod/          Generated Zod schemas
-  db/               (unused — using Supabase directly)
-supabase_schema.sql Complete DB schema
-database_setup.md   Service configuration guide
-```
+The match score is a model judgment against the job text you stored. It is not a hiring decision. Embedding search finds similar resumes. It does not rank who should be hired.
